@@ -7,34 +7,20 @@ use std::{fs, usize};
 
 fn main() {
     let settings = load_config();
-    let number = get_number(get_config_value(&settings, "number"));
-    let origin = expand_path(get_config_value(&settings, "origin"));
-    let target = expand_path(get_config_value(&settings, "target"));
+    let number = get_number(&settings, "number");
+    let origin = expand_path(&settings, "origin");
+    let target = expand_path(&settings, "target");
 
     match (origin, target) {
         (Some(ref origin_path), Some(ref target_path)) => {
-            create_dir(target_path);
-            for entry in fs::read_dir(target_path).unwrap() {
-                let entry = entry.unwrap();
-                let path = entry.path();
-                if path.is_file() {
-                    fs::remove_file(&path).unwrap();
-                }
-                println!("removed {}", path.display());
-            }
+            fs::create_dir_all(target_path).unwrap();
+            fs::create_dir_all(origin_path).unwrap();
+            remove_file(target_path);
+            let origin_file = get_file_names(origin_path);
 
-            create_dir(origin_path);
-            let dir = fs::read_dir(origin_path).unwrap();
+            let mut selected_files = Vec::with_capacity(number);
 
-            let file_names_string: Vec<String> = dir
-                .filter_map(|entry| {
-                    entry
-                        .ok()
-                        .map(|e| e.file_name().to_string_lossy().to_string())
-                })
-                .collect();
-            let mut selected_files: Vec<&String> = Vec::with_capacity(number);
-            for (i, name) in file_names_string.iter().enumerate() {
+            for (i, name) in origin_file.iter().enumerate() {
                 if i < number {
                     selected_files.push(name);
                 } else {
@@ -45,55 +31,32 @@ fn main() {
                 }
             }
             for name in selected_files {
-                let source_file = &origin_path.join(name);
-                let link_name = &target_path.join(name);
-                match unix::fs::symlink(source_file, link_name) {
-                    Ok(_) => println!("symlinked {}", link_name.display()),
-                    Err(e) => eprintln!(
-                        "Error symlinking {} to {}: {}",
-                        source_file.display(),
-                        link_name.display(),
-                        e
-                    ),
-                };
+                symlink_file(origin_path, target_path, name);
             }
         }
         _ => println!("No paths provided"),
     }
 }
-fn expand_path(path_option: Option<String>) -> Option<PathBuf> {
-    path_option
-        .map(|path_str| {
-            // 使用map对Option进行转换操作
-            if path_str.starts_with("~/") {
-                home_dir().map(|home| home.join(path_str.trim_start_matches("~/")))
-            // 如果以"~/"开头，则使用home_dir()获取用户目录并拼接路径
-            } else {
-                Some(PathBuf::from(path_str)) // 否则直接将字符串转换为PathBuf类型
-            }
-        })
-        .unwrap_or_else(|| None) // unwrap_or_else处理Option为None的情况，提供一个默认的返回值
-}
 
-fn create_dir(path: &PathBuf) {
-    fs::create_dir_all(path).unwrap();
+fn get_number(settings: &Config, key: &str) -> usize {
+    let settings = match settings.get_string(format!("configurations.{}", key).as_str()) {
+        Ok(n) => n,
+        Err(e) => panic!("Problem load configuration: {:?}", e),
+    };
+    settings.parse::<usize>().unwrap()
 }
-// fn get_config_number(settings: &Config, key: &str) -> Option<String> {
-//     settings
-//         .get(format!("configurations.{}", key).as_str())
-//         .ok()
-// }
-
-fn get_number(number: Option<String>) -> usize {
-    number
-        .and_then(|num| num.parse::<usize>().ok())
-        .unwrap_or(1)
-}
-
-fn get_config_value(settings: &Config, key: &str) -> Option<String> {
+fn expand_path(settings: &Config, key: &str) -> Option<PathBuf> {
     settings
         .get(format!("configurations.{}", key).as_str())
         .ok()
+        .and_then(|path_str| {
+            let path_str: String = path_str;
+            if path_str.starts_with("~/") {
+                home_dir().map(|home| home.join(path_str.trim_start_matches("~/")))
+            } else {
+                Some(PathBuf::from(path_str))
+            }
+        })
 }
 fn load_config() -> Config {
     match Config::builder()
@@ -106,4 +69,37 @@ fn load_config() -> Config {
             std::process::exit(1);
         }
     }
+}
+fn symlink_file(origin_path: &PathBuf, target_path: &PathBuf, file_name: &str) {
+    let source_file = PathBuf::from(origin_path).join(file_name);
+    let link_name = PathBuf::from(target_path).join(file_name);
+    match unix::fs::symlink(&source_file, &link_name) {
+        Ok(_) => println!("symlinked {}", link_name.display()),
+        Err(e) => eprintln!(
+            "Error symlinking {} to {}: {}",
+            source_file.display(),
+            link_name.display(),
+            e
+        ),
+    };
+}
+fn remove_file(path: &PathBuf) {
+    for entry in fs::read_dir(path).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_file() {
+            fs::remove_file(&path).unwrap();
+        }
+        println!("removed {}", path.display());
+    }
+}
+fn get_file_names(path: &PathBuf) -> Vec<String> {
+    fs::read_dir(path)
+        .unwrap()
+        .filter_map(|entry| {
+            entry
+                .ok()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+        })
+        .collect()
 }
