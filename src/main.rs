@@ -2,68 +2,17 @@ use config::{Config, File};
 use dirs::home_dir;
 use rand::Rng;
 use std::os::unix;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{fs, usize};
 
-fn expand_path(path_option: Option<String>) -> Option<PathBuf> {
-    match (path_option, home_dir()) {
-        (Some(path_str), Some(home)) if path_str.starts_with("~/") => {
-            Some(home.join(path_str.trim_start_matches("~/")))
-        }
-        (Some(path_str), _) => Some(PathBuf::from(path_str)),
-        _ => None,
-    }
-}
-fn create_dir(path: &PathBuf) {
-    if Path::new(path).is_dir() {
-        println!("directory exists");
-    } else {
-        match fs::create_dir_all(path) {
-            Ok(_) => println!("Folder '{}' created successfully.", path.display()),
-            Err(e) => eprintln!("Error creating folder '{}': {}", path.display(), e),
-        }
-    }
-}
-fn get_number(number: Option<String>) -> usize {
-    number
-        .map(|num| {
-            num.parse::<usize>().unwrap_or_else(|_| {
-                eprintln!("Invalid value for 'configurations.number'");
-                1
-            })
-        })
-        .unwrap_or_else(|| {
-            eprintln!("No 'configurations.number' provided");
-            1
-        })
-}
-fn get_config_value(settings: &Config, key: &str) -> Option<String> {
-    settings
-        .get(format!("configurations.{}", key).as_str())
-        .ok()
-}
-
 fn main() {
-    let settings_result = Config::builder()
-        .add_source(File::with_name("config.toml"))
-        .build();
-    let settings = match settings_result {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
-    };
-
+    let settings = load_config();
     let number = get_number(get_config_value(&settings, "number"));
     let origin = expand_path(get_config_value(&settings, "origin"));
     let target = expand_path(get_config_value(&settings, "target"));
 
     match (origin, target) {
         (Some(ref origin_path), Some(ref target_path)) => {
-            // println!("origin: {}", origin_path.display());
-            // println!("target: {}", target_path.display());
-
             create_dir(target_path);
             for entry in fs::read_dir(target_path).unwrap() {
                 let entry = entry.unwrap();
@@ -109,20 +58,52 @@ fn main() {
                 };
             }
         }
-        (Some(ref origin_path), None) => {
-            println!("origin: {}", origin_path.display());
-            eprintln!("No target path provided");
+        _ => println!("No paths provided"),
+    }
+}
+fn expand_path(path_option: Option<String>) -> Option<PathBuf> {
+    path_option
+        .map(|path_str| {
+            // 使用map对Option进行转换操作
+            if path_str.starts_with("~/") {
+                home_dir().map(|home| home.join(path_str.trim_start_matches("~/")))
+            // 如果以"~/"开头，则使用home_dir()获取用户目录并拼接路径
+            } else {
+                Some(PathBuf::from(path_str)) // 否则直接将字符串转换为PathBuf类型
+            }
+        })
+        .unwrap_or_else(|| None) // unwrap_or_else处理Option为None的情况，提供一个默认的返回值
+}
 
-            create_dir(origin_path);
-        }
-        (None, Some(ref target_path)) => {
-            println!("No origin path provided");
-            println!("target: {}", target_path.display());
+fn create_dir(path: &PathBuf) {
+    fs::create_dir_all(path).unwrap();
+}
+// fn get_config_number(settings: &Config, key: &str) -> Option<String> {
+//     settings
+//         .get(format!("configurations.{}", key).as_str())
+//         .ok()
+// }
 
-            create_dir(target_path);
-        }
-        (None, None) => {
-            eprintln!("No origin and target paths provided");
+fn get_number(number: Option<String>) -> usize {
+    number
+        .and_then(|num| num.parse::<usize>().ok())
+        .unwrap_or(1)
+}
+
+fn get_config_value(settings: &Config, key: &str) -> Option<String> {
+    settings
+        .get(format!("configurations.{}", key).as_str())
+        .ok()
+}
+fn load_config() -> Config {
+    match Config::builder()
+        .add_source(File::with_name("config.toml"))
+        .build()
+    {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error loading config: {}", e);
+            std::process::exit(1);
         }
     }
 }

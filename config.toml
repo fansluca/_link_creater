@@ -1,4 +1,4 @@
 [configurations]
-origin = "~/Pictures/LiveWallpaper/"
-target = "~/Pictures/Background/"
+origin = "~/Pictures/tmp/LiveWallpaper/"
+target = "~/Pictures/tmp/Background/"
 number = "5"
