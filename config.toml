@@ -1,0 +1,4 @@
+[configurations]
+origin = "~/Pictures/LiveWallpaper/"
+target = "~/Pictures/Background/"
+number = "5"
