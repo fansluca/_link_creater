@@ -8,21 +8,15 @@ use std::{fs, usize};
 fn main() {
     let config_path = "~/.config/link_creater_config.toml";
 
-    let expanded_config_path = home_dir()
-        .map(|home| home.join(config_path.trim_start_matches("~/")))
-        .expect("Failed to get home directory")
-        .to_string_lossy()
-        .into_owned();
-    let settings = load_config(&expanded_config_path);
-
+    let settings = load_config(config_path);
     let number = get_number(&settings, "number");
     let origin = expand_path(&settings, "origin");
     let target = expand_path(&settings, "target");
 
     match (origin, target) {
         (Some(ref origin_path), Some(ref target_path)) => {
-            fs::create_dir_all(target_path).unwrap();
             fs::create_dir_all(origin_path).unwrap();
+            fs::create_dir_all(target_path).unwrap();
             remove_file(target_path);
             let origin_file = get_file_names(origin_path);
 
@@ -67,8 +61,13 @@ fn expand_path(settings: &Config, key: &str) -> Option<PathBuf> {
         })
 }
 fn load_config(config_path: &str) -> Config {
+    let expanded_config_path = home_dir()
+        .map(|home| home.join(config_path.trim_start_matches("~/")))
+        .expect("Failed to get home directory")
+        .to_string_lossy()
+        .into_owned();
     match Config::builder()
-        .add_source(File::with_name(config_path))
+        .add_source(File::with_name(&expanded_config_path))
         .build()
     {
         Ok(s) => s,
